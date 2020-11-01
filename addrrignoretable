@@ -1,0 +1,47 @@
+#!/bin/bash
+#James Q Wang 31/10/20
+#if a table is ignore in the SN read replica, ptosc will fail
+#any DDL on the table will fail and relication breaks
+
+echo ensure the tmp table you are adding is DDL of one of the ignored tables
+
+if [[ -z "$1" ]]; then
+    echo please input table to add to the ignored list
+    exeit
+fi
+t=$1
+test=0
+cmd=sq
+if [[ -n "$2" ]]; then test=1; cmd=ml; fi
+
+instnm=
+if [[ "mac2" == "$HOSTNAME" ]] && [[ "0" == "$test" ]]; then
+    read -p "please input instance name (wp, sf, ai, atos, dhl or full name) "
+    if [[ -n "$REPLY" ]]; then
+        instnm=$REPLY
+    else
+        echo no input
+        exit
+    fi
+fi
+if [[ -z "$DBNM" ]]; then
+    $cmd "show databases"|egrep -v 'mysql|_schema'
+    read -p "please input db name (normally instancename_1) "
+    if [[ -n "$REPLY" ]]; then
+        DBNM=$REPLY
+    else
+        echo no DBNM
+        exit
+    fi
+fi
+
+file=$HOME/tmp/rr_ignored_tables.sql
+echo "stop slave;" > $file
+echo "set global replicate_ignore_table=\"$($cmd $instnm "show slave status\G"|grep -i replicate_ignore_table |awk -F': ' '{print $2}'), $DBNM.$t\"; " >> $file
+echo "start slave;" >> $file
+less $file
+echo see $file
+echo "please ensure the tmp table is indeed related to one of the excluded!!!"
+echo "e.g. pbrun snow mysqlbinlog instance /glide/mysqld/instance_$PORT'_dbsize'/log/binlog/mysql-binlog.xxxxxx | egrep -i tmp_xxx"
+echo "search relay logs for something like: create table tmp_xxx like sys_trigger"
+echo if all fine, do: $cmd $file
